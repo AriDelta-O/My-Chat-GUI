@@ -6,7 +6,7 @@
   <title>My-Chat-GUI</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body class="dark">
+<body class="dark" data-session-id="">
   <header class="topbar">
     <div class="brand">My-Chat-GUI</div>
     <div class="controls">
@@ -16,7 +16,7 @@
   </header>
 
   <main class="wrap">
-    <!-- Centered single-column area with subtle right panel that can show cards/results -->
+    <!-- Centered single-column area with subtle right panel -->
     <section class="chat-area card">
       <div id="messages" class="messages" aria-live="polite"></div>
 
@@ -31,7 +31,7 @@
       <div class="panel-body">
         <div class="panel-section">
           <h4>Session</h4>
-          <p id="sessionInfo">Not connected</p>
+          <p id="sessionInfo">Session ID: <span id="sessionIdText">-</span></p>
         </div>
         <div class="panel-section">
           <h4>Streaming</h4>
