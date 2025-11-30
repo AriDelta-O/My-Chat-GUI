@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>My-Chat-GUI</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark">
+  <header class="topbar">
+    <div class="brand">My-Chat-GUI</div>
+    <div class="controls">
+      <button id="themeToggle" class="icon">🌙</button>
+      <button id="clearBtn" class="ghost">Clear</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- Centered single-column area with subtle right panel that can show cards/results -->
+    <section class="chat-area card">
+      <div id="messages" class="messages" aria-live="polite"></div>
+
+      <form id="promptForm" class="prompt" autocomplete="off">
+        <input id="promptInput" type="text" placeholder="Type a message (try: Hello!)" />
+        <button type="submit" class="send">Send</button>
+      </form>
+    </section>
+
+    <aside class="side-panel card" id="sidePanel">
+      <div class="panel-header">Context & Tools</div>
+      <div class="panel-body">
+        <div class="panel-section">
+          <h4>Session</h4>
+          <p id="sessionInfo">Not connected</p>
+        </div>
+        <div class="panel-section">
+          <h4>Streaming</h4>
+          <p>Ready for backend integration.</p>
+        </div>
+        <div class="panel-section">
+          <h4>Model</h4>
+          <select id="modelSelect"></select>
+        </div>
+        <div class="panel-section actions">
+          <button id="connectBtn" class="btn">Connect (placeholder)</button>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast" aria-hidden="true"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
