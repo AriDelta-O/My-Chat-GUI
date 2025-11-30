@@ -11,11 +11,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const toast = document.getElementById('toast');
   const modelSelect = document.getElementById('modelSelect');
 
-  // New elements for session control
+  // Session control elements
   const sessionSelect = document.getElementById('sessionSelect');
   const newSessionBtn = document.getElementById('newSessionBtn');
   const renameSessionBtn = document.getElementById('renameSessionBtn');
-  const resetSessionBtn = document.getElementById('resetSessionBtn');
   const deleteSessionBtn = document.getElementById('deleteSessionBtn');
 
   const memoryToggle = document.getElementById('memoryToggle');
@@ -28,7 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const modelInfoText = document.getElementById('modelInfoText');
 
   // ===========================================================================
-  // CHAT LOG HELPERS (stored in localStorage)
+  // CHAT LOG HELPERS
   // ===========================================================================
   function saveMessageToLog(session_id, role, text) {
     let logs = JSON.parse(localStorage.getItem("chatLogs") || "{}");
@@ -141,19 +140,6 @@ document.addEventListener("DOMContentLoaded", () => {
     toastMsg("Session deleted.");
   }
 
-  async function resetSession() {
-    await fetch("http://localhost:8000/api/sessions/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: currentSession })
-    });
-
-    clearChatLog(currentSession);
-    loadChatLog(currentSession);
-
-    toastMsg("Session memory cleared.");
-  }
-
   sessionSelect.addEventListener("change", async () => {
     currentSession = sessionSelect.value;
     toastMsg(`Switched to session: ${currentSession}`);
@@ -163,7 +149,6 @@ document.addEventListener("DOMContentLoaded", () => {
   newSessionBtn.addEventListener("click", createSession);
   renameSessionBtn.addEventListener("click", renameSession);
   deleteSessionBtn.addEventListener("click", deleteSession);
-  resetSessionBtn.addEventListener("click", resetSession);
 
   loadSessions();
 
@@ -321,14 +306,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!currentSession) return toastMsg("No session selected.");
 
     try {
-      // Reset backend memory
       await fetch("http://localhost:8000/api/sessions/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: currentSession })
       });
 
-      // Clear frontend chat log
       clearChatLog(currentSession);
       loadChatLog(currentSession);
 
