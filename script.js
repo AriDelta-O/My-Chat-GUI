@@ -1,81 +1,172 @@
 document.addEventListener("DOMContentLoaded", () => {
+
+  // ===========================================================================
+  // BASIC ELEMENTS
+  // ===========================================================================
   const themeToggle = document.getElementById('themeToggle');
   const messagesEl = document.getElementById('messages');
   const promptForm = document.getElementById('promptForm');
   const promptInput = document.getElementById('promptInput');
   const clearBtn = document.getElementById('clearBtn');
   const toast = document.getElementById('toast');
-  const sessionInfo = document.getElementById('sessionIdText');
-  const connectBtn = document.getElementById('connectBtn');
   const modelSelect = document.getElementById('modelSelect');
 
-  // --------------------------------------------------------------------
-  // 1) SESSION ID (Conversation Memory)
-  // --------------------------------------------------------------------
-  if (!document.body.dataset.sessionId) {
-    document.body.dataset.sessionId = crypto.randomUUID();
-  }
-  const sessionId = document.body.dataset.sessionId;
-  sessionInfo.textContent = sessionId;
+  // NEW ELEMENTS
+  const sessionSelect = document.getElementById('sessionSelect');
+  const newSessionBtn = document.getElementById('newSessionBtn');
+  const renameSessionBtn = document.getElementById('renameSessionBtn');
+  const resetSessionBtn = document.getElementById('resetSessionBtn');
+  const deleteSessionBtn = document.getElementById('deleteSessionBtn');
+  const memoryToggle = document.getElementById('memoryToggle');
+  const tempSlider = document.getElementById('tempSlider');
+  const topPSlider = document.getElementById('topPSlider');
+  const systemPromptInput = document.getElementById('systemPromptInput');
+  const saveSystemPromptBtn = document.getElementById('saveSystemPromptBtn');
+  const modelInfoBtn = document.getElementById('modelInfoBtn');
+  const modelInfoBox = document.getElementById('modelInfoBox');
+  const modelInfoText = document.getElementById('modelInfoText');
 
-  // --------------------------------------------------------------------
-  // 2) Markdown Options
-  // --------------------------------------------------------------------
+
+  // ===========================================================================
+  // SESSION MANAGEMENT
+  // ===========================================================================
+
+  // Current session ID used by the chat
+  let currentSession = "";
+
+  async function loadSessions() {
+    const res = await fetch("http://localhost:8000/api/sessions");
+    const list = await res.json();
+
+    sessionSelect.innerHTML = "";
+    list.forEach(s => {
+      const opt = document.createElement("option");
+      opt.value = s.session_id;
+      opt.textContent = s.name;
+      sessionSelect.appendChild(opt);
+    });
+
+    if (!currentSession && list.length > 0) {
+      currentSession = list[0].session_id;
+      sessionSelect.value = currentSession;
+    }
+
+    return list;
+  }
+
+  async function createSession() {
+    const res = await fetch("http://localhost:8000/api/sessions/new", {
+      method: "POST"
+    });
+    const data = await res.json();
+
+    await loadSessions();
+    currentSession = data.session_id;
+    sessionSelect.value = currentSession;
+    toastMsg("New session created.");
+  }
+
+  async function renameSession() {
+    const newName = prompt("Enter new session name:");
+    if (!newName) return;
+
+    await fetch("http://localhost:8000/api/sessions/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: currentSession, new_name: newName })
+    });
+
+    await loadSessions();
+    toastMsg("Session renamed.");
+  }
+
+  async function deleteSession() {
+    const ok = confirm("Delete this session?");
+    if (!ok) return;
+
+    await fetch("http://localhost:8000/api/sessions/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: currentSession })
+    });
+
+    const sessions = await loadSessions();
+    if (sessions.length > 0) {
+      currentSession = sessions[0].session_id;
+      sessionSelect.value = currentSession;
+    } else {
+      currentSession = "";
+      sessionSelect.innerHTML = "";
+    }
+    toastMsg("Session deleted.");
+  }
+
+  async function resetSession() {
+    await fetch("http://localhost:8000/api/sessions/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: currentSession })
+    });
+
+    toastMsg("Session memory cleared.");
+  }
+
+  sessionSelect.addEventListener("change", () => {
+    currentSession = sessionSelect.value;
+    toastMsg(`Switched to session: ${currentSession}`);
+  });
+
+  newSessionBtn.addEventListener("click", createSession);
+  renameSessionBtn.addEventListener("click", renameSession);
+  deleteSessionBtn.addEventListener("click", deleteSession);
+  resetSessionBtn.addEventListener("click", resetSession);
+
+  // Load sessions initially
+  loadSessions();
+
+
+  // ===========================================================================
+  // MARKDOWN
+  // ===========================================================================
   marked.setOptions({ breaks: true });
 
-  // --------------------------------------------------------------------
-  // 3) Theme toggle
-  // --------------------------------------------------------------------
+
+  // ===========================================================================
+  // THEME TOGGLE
+  // ===========================================================================
   const applyTheme = () => {
     const light = localStorage.getItem('theme') === 'light';
     document.body.classList.toggle('light', light);
     themeToggle.textContent = light ? '☀️' : '🌙';
   };
   applyTheme();
+
   themeToggle.addEventListener('click', () => {
     const isLight = document.body.classList.toggle('light');
     localStorage.setItem('theme', isLight ? 'light' : 'dark');
     themeToggle.textContent = isLight ? '☀️' : '🌙';
   });
 
-  // --------------------------------------------------------------------
-  // 4) Toast message
-  // --------------------------------------------------------------------
-  function toastMsg(msg, duration = 2500) {
+
+  // ===========================================================================
+  // TOAST
+  // ===========================================================================
+  function toastMsg(msg, duration = 2000) {
     toast.textContent = msg;
     toast.style.display = 'block';
-    toast.setAttribute('aria-hidden', 'false');
-    setTimeout(() => {
-      toast.style.display = 'none';
-      toast.setAttribute('aria-hidden', 'true');
-    }, duration);
+    setTimeout(() => { toast.style.display = 'none'; }, duration);
   }
 
-  // --------------------------------------------------------------------
-  // 5) Create message bubble
-  // --------------------------------------------------------------------
+
+  // ===========================================================================
+  // MESSAGE HELPERS
+  // ===========================================================================
   function createMessage(text, cls = 'ai') {
     const el = document.createElement('div');
     el.className = `message ${cls}`;
 
-    // Allow markdown in AI messages
-    if (cls === 'ai') {
-      el.innerHTML = marked.parse(text);
-    } else {
-      el.textContent = text;
-    }
-
-    // Tilt effect (user only)
-    if (cls === 'user') {
-      el.setAttribute('data-tilt', '1');
-      el.addEventListener('mousemove', e => {
-        const r = el.getBoundingClientRect();
-        const x = (e.clientX - r.left) - r.width / 2;
-        const y = (e.clientY - r.top) - r.height / 2;
-        el.style.transform = `perspective(700px) rotateX(${-(y / r.height) * 6}deg) rotateY(${(x / r.width) * 6}deg)`;
-      });
-      el.addEventListener('mouseleave', () => { el.style.transform = 'none'; });
-    }
+    if (cls === 'ai') el.innerHTML = marked.parse(text);
+    else el.textContent = text;
 
     return el;
   }
@@ -84,66 +175,79 @@ document.addEventListener("DOMContentLoaded", () => {
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  // --------------------------------------------------------------------
-  // 6) Welcome message
-  // --------------------------------------------------------------------
-  messagesEl.appendChild(createMessage('Welcome to My-Chat-GUI — ready when you are!'));
+
+  // ===========================================================================
+  // WELCOME MESSAGE
+  // ===========================================================================
+  messagesEl.appendChild(createMessage("Welcome to My-Chat-GUI — ready when you are!"));
   scrollBottom();
 
-  // --------------------------------------------------------------------
-  // 7) Load models
-  // --------------------------------------------------------------------
+
+  // ===========================================================================
+  // LOAD MODELS
+  // ===========================================================================
   async function loadModels() {
     try {
-      const res = await fetch('http://localhost:8000/api/models');
+      const res = await fetch("http://localhost:8000/api/models");
       const models = await res.json();
 
-      modelSelect.innerHTML = '';
-
+      modelSelect.innerHTML = "";
       models.forEach(m => {
-        const opt = document.createElement('option');
+        const opt = document.createElement("option");
         opt.value = m;
         opt.textContent = m;
         modelSelect.appendChild(opt);
       });
 
-      if (models.length > 0) {
-        toastMsg(`Loaded ${models.length} models`);
-      } else {
-        toastMsg("No models found");
-      }
     } catch (err) {
-      toastMsg("Cannot fetch models from backend");
-      console.error(err);
+      toastMsg("Could not load models.");
     }
   }
   loadModels();
 
-  // --------------------------------------------------------------------
-  // 8) Stream messages from backend with memory
-  // --------------------------------------------------------------------
-  promptForm.addEventListener('submit', async (e) => {
+
+  // ===========================================================================
+  // MODEL INFO
+  // ===========================================================================
+  modelInfoBtn.addEventListener("click", () => {
+    const name = modelSelect.value;
+    if (!name) return;
+
+    // For now we show basic info (Ollama list does not return details)
+    modelInfoText.textContent = `Model: ${name}\nNo extended info available.`;
+    modelInfoBox.classList.toggle("hidden");
+  });
+
+
+  // ===========================================================================
+  // SEND MESSAGE (STREAMING)
+  // ===========================================================================
+  promptForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const prompt = promptInput.value.trim();
-    if (!prompt) return;
+    if (!currentSession) return toastMsg("Select or create a session first.");
+
+    const userText = promptInput.value.trim();
+    if (!userText) return;
 
     // Show user message
-    messagesEl.appendChild(createMessage(prompt, 'user'));
-    promptInput.value = '';
+    messagesEl.appendChild(createMessage(userText, "user"));
+    promptInput.value = "";
     scrollBottom();
 
-    // Placeholder for AI
-    const aiEl = document.createElement('div');
-    aiEl.className = 'message ai';
+    // Placeholder AI message
+    const aiEl = document.createElement("div");
+    aiEl.className = "message ai";
     aiEl.innerHTML = "...";
     messagesEl.appendChild(aiEl);
     scrollBottom();
 
-    const model = modelSelect.value;
-    const url =
-      `http://localhost:8000/api/stream?model=${encodeURIComponent(model)}`
-      + `&prompt=${encodeURIComponent(prompt)}`
-      + `&session_id=${encodeURIComponent(sessionId)}`;
+    const params = new URLSearchParams({
+      model: modelSelect.value,
+      prompt: userText,
+      session_id: currentSession
+    });
+
+    const url = `http://localhost:8000/api/stream?${params.toString()}`;
 
     try {
       promptInput.disabled = true;
@@ -154,47 +258,51 @@ document.addEventListener("DOMContentLoaded", () => {
 
       let finalText = "";
 
-      // Streaming loop
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
         finalText += chunk;
-
         aiEl.innerHTML = marked.parse(finalText);
         scrollBottom();
       }
 
     } catch (err) {
-      aiEl.innerHTML = "[Error: Could not reach backend]";
-      toastMsg("Backend unreachable. Is uvicorn running?");
-      console.error(err);
+      aiEl.innerHTML = "[Error: Backend unreachable]";
     } finally {
       promptInput.disabled = false;
     }
   });
 
-  // --------------------------------------------------------------------
-  // 9) Clear chat
-  // --------------------------------------------------------------------
-  clearBtn.addEventListener('click', () => {
-    messagesEl.innerHTML = '';
-    messagesEl.appendChild(createMessage('Chat cleared. Say hi!'));
+
+  // ===========================================================================
+  // CLEAR CHAT
+  // ===========================================================================
+  clearBtn.addEventListener("click", () => {
+    messagesEl.innerHTML = "";
+    messagesEl.appendChild(createMessage("Chat cleared. Say hi!"));
   });
 
-  connectBtn.addEventListener('click', () => {
-    toastMsg("Streaming enabled via backend.");
-  });
 
-  // --------------------------------------------------------------------
-  // 10) Enter to submit
-  // --------------------------------------------------------------------
-  promptInput.addEventListener('keydown', (e) => {
+  // ===========================================================================
+  // ENTER KEY SUBMIT
+  // ===========================================================================
+  promptInput.addEventListener("keydown", (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       promptForm.requestSubmit();
     }
+  });
+
+
+  // ===========================================================================
+  // SYSTEM PROMPT APPLY
+  // ===========================================================================
+  saveSystemPromptBtn.addEventListener("click", () => {
+    const sys = systemPromptInput.value.trim();
+    localStorage.setItem("systemPrompt", sys);
+    toastMsg("System prompt saved.");
   });
 
 });
