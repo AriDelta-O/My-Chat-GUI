@@ -11,12 +11,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const toast = document.getElementById('toast');
   const modelSelect = document.getElementById('modelSelect');
 
-  // NEW ELEMENTS
+  // New elements for session control
   const sessionSelect = document.getElementById('sessionSelect');
   const newSessionBtn = document.getElementById('newSessionBtn');
   const renameSessionBtn = document.getElementById('renameSessionBtn');
   const resetSessionBtn = document.getElementById('resetSessionBtn');
   const deleteSessionBtn = document.getElementById('deleteSessionBtn');
+
   const memoryToggle = document.getElementById('memoryToggle');
   const tempSlider = document.getElementById('tempSlider');
   const topPSlider = document.getElementById('topPSlider');
@@ -26,12 +27,41 @@ document.addEventListener("DOMContentLoaded", () => {
   const modelInfoBox = document.getElementById('modelInfoBox');
   const modelInfoText = document.getElementById('modelInfoText');
 
+  // ===========================================================================
+  // CHAT LOG HELPERS (stored in localStorage)
+  // ===========================================================================
+  function saveMessageToLog(session_id, role, text) {
+    let logs = JSON.parse(localStorage.getItem("chatLogs") || "{}");
+    if (!logs[session_id]) logs[session_id] = [];
+    logs[session_id].push({ role, text });
+    localStorage.setItem("chatLogs", JSON.stringify(logs));
+  }
+
+  function loadChatLog(session_id) {
+    messagesEl.innerHTML = "";
+    const logs = JSON.parse(localStorage.getItem("chatLogs") || "{}");
+
+    if (!logs[session_id] || logs[session_id].length === 0) {
+      messagesEl.appendChild(createMessage("New session. Say something!"));
+      return;
+    }
+
+    logs[session_id].forEach(msg => {
+      messagesEl.appendChild(createMessage(msg.text, msg.role === "user" ? "user" : "ai"));
+    });
+
+    scrollBottom();
+  }
+
+  function clearChatLog(session_id) {
+    let logs = JSON.parse(localStorage.getItem("chatLogs") || "{}");
+    logs[session_id] = [];
+    localStorage.setItem("chatLogs", JSON.stringify(logs));
+  }
 
   // ===========================================================================
   // SESSION MANAGEMENT
   // ===========================================================================
-
-  // Current session ID used by the chat
   let currentSession = "";
 
   async function loadSessions() {
@@ -49,20 +79,24 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!currentSession && list.length > 0) {
       currentSession = list[0].session_id;
       sessionSelect.value = currentSession;
+      loadChatLog(currentSession);
     }
 
     return list;
   }
 
   async function createSession() {
-    const res = await fetch("http://localhost:8000/api/sessions/new", {
-      method: "POST"
-    });
+    const res = await fetch("http://localhost:8000/api/sessions/new", { method: "POST" });
     const data = await res.json();
 
     await loadSessions();
     currentSession = data.session_id;
     sessionSelect.value = currentSession;
+
+    // Initialize chat log
+    saveMessageToLog(currentSession, "ai", "New session created.");
+    loadChatLog(currentSession);
+
     toastMsg("New session created.");
   }
 
@@ -90,14 +124,22 @@ document.addEventListener("DOMContentLoaded", () => {
       body: JSON.stringify({ session_id: currentSession })
     });
 
+    // Remove chat log
+    let logs = JSON.parse(localStorage.getItem("chatLogs") || "{}");
+    delete logs[currentSession];
+    localStorage.setItem("chatLogs", JSON.stringify(logs));
+
     const sessions = await loadSessions();
     if (sessions.length > 0) {
       currentSession = sessions[0].session_id;
       sessionSelect.value = currentSession;
+      loadChatLog(currentSession);
     } else {
       currentSession = "";
       sessionSelect.innerHTML = "";
+      messagesEl.innerHTML = "";
     }
+
     toastMsg("Session deleted.");
   }
 
@@ -108,12 +150,16 @@ document.addEventListener("DOMContentLoaded", () => {
       body: JSON.stringify({ session_id: currentSession })
     });
 
+    clearChatLog(currentSession);
+    loadChatLog(currentSession);
+
     toastMsg("Session memory cleared.");
   }
 
-  sessionSelect.addEventListener("change", () => {
+  sessionSelect.addEventListener("change", async () => {
     currentSession = sessionSelect.value;
     toastMsg(`Switched to session: ${currentSession}`);
+    loadChatLog(currentSession);
   });
 
   newSessionBtn.addEventListener("click", createSession);
@@ -121,15 +167,12 @@ document.addEventListener("DOMContentLoaded", () => {
   deleteSessionBtn.addEventListener("click", deleteSession);
   resetSessionBtn.addEventListener("click", resetSession);
 
-  // Load sessions initially
   loadSessions();
-
 
   // ===========================================================================
   // MARKDOWN
   // ===========================================================================
   marked.setOptions({ breaks: true });
-
 
   // ===========================================================================
   // THEME TOGGLE
@@ -147,7 +190,6 @@ document.addEventListener("DOMContentLoaded", () => {
     themeToggle.textContent = isLight ? '☀️' : '🌙';
   });
 
-
   // ===========================================================================
   // TOAST
   // ===========================================================================
@@ -157,17 +199,14 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => { toast.style.display = 'none'; }, duration);
   }
 
-
   // ===========================================================================
   // MESSAGE HELPERS
   // ===========================================================================
   function createMessage(text, cls = 'ai') {
     const el = document.createElement('div');
     el.className = `message ${cls}`;
-
     if (cls === 'ai') el.innerHTML = marked.parse(text);
     else el.textContent = text;
-
     return el;
   }
 
@@ -175,16 +214,8 @@ document.addEventListener("DOMContentLoaded", () => {
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-
   // ===========================================================================
-  // WELCOME MESSAGE
-  // ===========================================================================
-  messagesEl.appendChild(createMessage("Welcome to My-Chat-GUI — ready when you are!"));
-  scrollBottom();
-
-
-  // ===========================================================================
-  // LOAD MODELS
+  // LOAD MODELS (fixed)
   // ===========================================================================
   async function loadModels() {
     try {
@@ -192,6 +223,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const models = await res.json();
 
       modelSelect.innerHTML = "";
+
+      if (!models || models.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No models available";
+        modelSelect.appendChild(opt);
+        return;
+      }
+
       models.forEach(m => {
         const opt = document.createElement("option");
         opt.value = m;
@@ -199,12 +239,18 @@ document.addEventListener("DOMContentLoaded", () => {
         modelSelect.appendChild(opt);
       });
 
+      // Auto-select first model
+      modelSelect.value = models[0];
+
     } catch (err) {
       toastMsg("Could not load models.");
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "Error loading models";
+      modelSelect.appendChild(opt);
     }
   }
   loadModels();
-
 
   // ===========================================================================
   // MODEL INFO
@@ -213,28 +259,27 @@ document.addEventListener("DOMContentLoaded", () => {
     const name = modelSelect.value;
     if (!name) return;
 
-    // For now we show basic info (Ollama list does not return details)
     modelInfoText.textContent = `Model: ${name}\nNo extended info available.`;
     modelInfoBox.classList.toggle("hidden");
   });
 
-
   // ===========================================================================
-  // SEND MESSAGE (STREAMING)
+  // SEND MESSAGE
   // ===========================================================================
   promptForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!currentSession) return toastMsg("Select or create a session first.");
+    if (!modelSelect.value) return toastMsg("Please select a model first.");
 
     const userText = promptInput.value.trim();
     if (!userText) return;
 
-    // Show user message
     messagesEl.appendChild(createMessage(userText, "user"));
-    promptInput.value = "";
+    saveMessageToLog(currentSession, "user", userText);
     scrollBottom();
 
-    // Placeholder AI message
+    promptInput.value = "";
+
     const aiEl = document.createElement("div");
     aiEl.className = "message ai";
     aiEl.innerHTML = "...";
@@ -255,7 +300,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch(url);
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-
       let finalText = "";
 
       while (true) {
@@ -268,6 +312,8 @@ document.addEventListener("DOMContentLoaded", () => {
         scrollBottom();
       }
 
+      saveMessageToLog(currentSession, "ai", finalText);
+
     } catch (err) {
       aiEl.innerHTML = "[Error: Backend unreachable]";
     } finally {
@@ -275,15 +321,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-
   // ===========================================================================
   // CLEAR CHAT
   // ===========================================================================
   clearBtn.addEventListener("click", () => {
-    messagesEl.innerHTML = "";
-    messagesEl.appendChild(createMessage("Chat cleared. Say hi!"));
+    clearChatLog(currentSession);
+    loadChatLog(currentSession);
+    toastMsg("Chat cleared for this session.");
   });
-
 
   // ===========================================================================
   // ENTER KEY SUBMIT
@@ -295,9 +340,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-
   // ===========================================================================
-  // SYSTEM PROMPT APPLY
+  // SYSTEM PROMPT SAVE
   // ===========================================================================
   saveSystemPromptBtn.addEventListener("click", () => {
     const sys = systemPromptInput.value.trim();
