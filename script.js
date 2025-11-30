@@ -93,7 +93,6 @@ document.addEventListener("DOMContentLoaded", () => {
     currentSession = data.session_id;
     sessionSelect.value = currentSession;
 
-    // Initialize chat log
     saveMessageToLog(currentSession, "ai", "New session created.");
     loadChatLog(currentSession);
 
@@ -124,7 +123,6 @@ document.addEventListener("DOMContentLoaded", () => {
       body: JSON.stringify({ session_id: currentSession })
     });
 
-    // Remove chat log
     let logs = JSON.parse(localStorage.getItem("chatLogs") || "{}");
     delete logs[currentSession];
     localStorage.setItem("chatLogs", JSON.stringify(logs));
@@ -215,7 +213,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ===========================================================================
-  // LOAD MODELS (fixed)
+  // LOAD MODELS
   // ===========================================================================
   async function loadModels() {
     try {
@@ -223,7 +221,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const models = await res.json();
 
       modelSelect.innerHTML = "";
-
       if (!models || models.length === 0) {
         const opt = document.createElement("option");
         opt.value = "";
@@ -239,7 +236,6 @@ document.addEventListener("DOMContentLoaded", () => {
         modelSelect.appendChild(opt);
       });
 
-      // Auto-select first model
       modelSelect.value = models[0];
 
     } catch (err) {
@@ -258,7 +254,6 @@ document.addEventListener("DOMContentLoaded", () => {
   modelInfoBtn.addEventListener("click", () => {
     const name = modelSelect.value;
     if (!name) return;
-
     modelInfoText.textContent = `Model: ${name}\nNo extended info available.`;
     modelInfoBox.classList.toggle("hidden");
   });
@@ -277,7 +272,6 @@ document.addEventListener("DOMContentLoaded", () => {
     messagesEl.appendChild(createMessage(userText, "user"));
     saveMessageToLog(currentSession, "user", userText);
     scrollBottom();
-
     promptInput.value = "";
 
     const aiEl = document.createElement("div");
@@ -305,7 +299,6 @@ document.addEventListener("DOMContentLoaded", () => {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-
         const chunk = decoder.decode(value, { stream: true });
         finalText += chunk;
         aiEl.innerHTML = marked.parse(finalText);
@@ -322,12 +315,27 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // ===========================================================================
-  // CLEAR CHAT
+  // CLEAR CHAT (clears backend memory too)
   // ===========================================================================
-  clearBtn.addEventListener("click", () => {
-    clearChatLog(currentSession);
-    loadChatLog(currentSession);
-    toastMsg("Chat cleared for this session.");
+  clearBtn.addEventListener("click", async () => {
+    if (!currentSession) return toastMsg("No session selected.");
+
+    try {
+      // Reset backend memory
+      await fetch("http://localhost:8000/api/sessions/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: currentSession })
+      });
+
+      // Clear frontend chat log
+      clearChatLog(currentSession);
+      loadChatLog(currentSession);
+
+      toastMsg("Chat cleared and session memory reset.");
+    } catch (err) {
+      toastMsg("Error clearing session memory.");
+    }
   });
 
   // ===========================================================================
