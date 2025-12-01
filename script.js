@@ -11,7 +11,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const toast = document.getElementById('toast');
   const modelSelect = document.getElementById('modelSelect');
 
-  // NEW: send button reference
   const sendBtn = document.getElementById("sendBtn");
 
   // Session control elements
@@ -29,7 +28,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const modelInfoBox = document.getElementById('modelInfoBox');
   const modelInfoText = document.getElementById('modelInfoText');
 
-
   // ===========================================================================
   // ENABLE SPELLCHECK + SMART INPUT
   // ===========================================================================
@@ -37,7 +35,6 @@ document.addEventListener("DOMContentLoaded", () => {
   promptInput.setAttribute("autocomplete", "on");
   promptInput.setAttribute("autocorrect", "on");
   promptInput.setAttribute("autocapitalize", "sentences");
-
 
   // ===========================================================================
   // AUTO-RESIZE INPUT
@@ -48,20 +45,26 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   promptInput.addEventListener("input", autoResize);
 
-
   // ===========================================================================
-  // SEND BUTTON ACTIVE STATE
+  // SEND BUTTON ACTIVE STATE WITH CHATGPT-LIKE STATES
   // ===========================================================================
   function updateSendState() {
     if (promptInput.value.trim().length > 0) {
       sendBtn.classList.add("active");
+      sendBtn.classList.remove("disabled");
+      sendBtn.disabled = false;
     } else {
       sendBtn.classList.remove("active");
+      sendBtn.classList.add("disabled");
+      sendBtn.disabled = true;
     }
   }
-  promptInput.addEventListener("input", updateSendState);
+  promptInput.addEventListener("input", () => {
+    updateSendState();
+    autoResize();
+  });
   updateSendState();
-
+  autoResize();
 
   // ===========================================================================
   // SLIDER: load and sync
@@ -76,12 +79,10 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("top_p", topPSlider.value);
   });
 
-
   // ===========================================================================
   // SYSTEM PROMPT LOAD
   // ===========================================================================
   systemPromptInput.value = localStorage.getItem("systemPrompt") || "";
-
 
   // ===========================================================================
   // CHAT LOG HELPERS
@@ -114,7 +115,6 @@ document.addEventListener("DOMContentLoaded", () => {
     logs[session_id] = [];
     localStorage.setItem("chatLogs", JSON.stringify(logs));
   }
-
 
   // ===========================================================================
   // SESSION MANAGEMENT
@@ -150,7 +150,6 @@ document.addEventListener("DOMContentLoaded", () => {
     currentSession = data.session_id;
     sessionSelect.value = currentSession;
 
-    // Prevent previous system prompt from leaking
     localStorage.removeItem("systemPrompt");
     systemPromptInput.value = "";
 
@@ -214,12 +213,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadSessions();
 
-
   // ===========================================================================
   // MARKDOWN
   // ===========================================================================
   marked.setOptions({ breaks: true });
-
 
   // ===========================================================================
   // THEME TOGGLE
@@ -237,7 +234,6 @@ document.addEventListener("DOMContentLoaded", () => {
     themeToggle.textContent = isLight ? '☀️' : '🌙';
   });
 
-
   // ===========================================================================
   // TOAST
   // ===========================================================================
@@ -246,7 +242,6 @@ document.addEventListener("DOMContentLoaded", () => {
     toast.style.display = 'block';
     setTimeout(() => { toast.style.display = 'none'; }, duration);
   }
-
 
   // ===========================================================================
   // MESSAGE HELPERS
@@ -262,7 +257,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function scrollBottom() {
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
-
 
   // ===========================================================================
   // LOAD MODELS
@@ -300,7 +294,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   loadModels();
 
-
   // ===========================================================================
   // MODEL INFO
   // ===========================================================================
@@ -310,7 +303,6 @@ document.addEventListener("DOMContentLoaded", () => {
     modelInfoText.textContent = `Model: ${name}\nNo extended info available.`;
     modelInfoBox.classList.toggle("hidden");
   });
-
 
   // ===========================================================================
   // SEND MESSAGE
@@ -336,7 +328,7 @@ document.addEventListener("DOMContentLoaded", () => {
     messagesEl.appendChild(aiEl);
     scrollBottom();
 
-    // NEW: button -> loading state
+    // Send button loading state
     sendBtn.classList.add("loading");
     sendBtn.disabled = true;
 
@@ -376,14 +368,11 @@ document.addEventListener("DOMContentLoaded", () => {
       aiEl.innerHTML = "[Error: Backend unreachable]";
     } finally {
       promptInput.disabled = false;
-
-      // restore button state
       sendBtn.classList.remove("loading");
       sendBtn.disabled = false;
       updateSendState();
     }
   });
-
 
   // ===========================================================================
   // CLEAR CHAT + BACKEND MEMORY
@@ -407,7 +396,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-
   // ===========================================================================
   // ENTER KEY SUBMIT
   // ===========================================================================
@@ -417,7 +405,6 @@ document.addEventListener("DOMContentLoaded", () => {
       promptForm.requestSubmit();
     }
   });
-
 
   // ===========================================================================
   // SAVE SYSTEM PROMPT

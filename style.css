@@ -184,6 +184,9 @@ html, body{
   font-size: 15px;
   line-height: 1.4;
   caret-color: var(--accent);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* placeholder color consistent with theme */
@@ -214,19 +217,69 @@ html, body{
   box-shadow: 0 8px 20px rgba(255,59,48,0.12);
 }
 
-/* SVG icon sizing */
+/* Modern arrow icon styling */
 .send-btn .icon {
-  width: 18px;
-  height: 18px;
-  display: block;
+  font-size: 20px;
+  line-height: 1;
+  display: inline-block;
+  transition: opacity 0.2s ease;
+  width: auto;
+  height: auto;
+}
+
+/* Spinner styling inside send button */
+.send-btn .spinner {
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
+  animation: spin 1s linear infinite;
+  color: white;
+}
+
+/* Hide spinner when not loading */
+.send-btn:not(.loading) .spinner {
+  display: none;
+}
+
+/* Hide arrow icon while loading */
+.send-btn.loading .icon {
+  opacity: 0;
+}
+
+/* Spinner circle dash animation */
+.spinner-icon .path {
+  stroke-dasharray: 150;
+  stroke-dashoffset: 0;
+  stroke-linecap: round;
+  animation: dash 1.5s ease-in-out infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes dash {
+  0% {
+    stroke-dashoffset: 150;
+  }
+  50% {
+    stroke-dashoffset: 37.5;
+    transform: rotate(45deg);
+  }
+  100% {
+    stroke-dashoffset: 150;
+    transform: rotate(360deg);
+  }
 }
 
 /* Hover and active states */
-.send-btn:hover {
+.send-btn:hover:not(.disabled) {
   transform: translateY(-2px);
   box-shadow: 0 14px 30px rgba(255,59,48,0.14);
 }
-.send-btn:active { transform: translateY(0); }
+.send-btn:active:not(.disabled) {
+  transform: translateY(0);
+}
 
 /* disabled appearance (keeps the button present but inert) */
 .send-btn.disabled {
