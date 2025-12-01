@@ -22,10 +22,25 @@
     <section class="chat-area card">
       <div id="messages" class="messages" aria-live="polite"></div>
 
+      <!-- UPDATED PROMPT AREA -->
       <form id="promptForm" class="prompt" autocomplete="off">
-        <input id="promptInput" type="text"
-               placeholder="Type a message (try: Hello!)" />
-        <button type="submit" class="send">Send</button>
+        <div class="input-wrap">
+          <textarea id="promptInput"
+                    placeholder="Type a message…"
+                    spellcheck="true"
+                    rows="1"></textarea>
+
+          <button type="submit" id="sendBtn" class="send-btn disabled" aria-label="Send">
+            <svg viewBox="0 0 24 24" class="icon">
+              <path d="M7 11l9-9v20l-9-9h13"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    fill="none"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
       </form>
     </section>
 

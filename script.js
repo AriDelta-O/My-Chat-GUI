@@ -11,6 +11,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const toast = document.getElementById('toast');
   const modelSelect = document.getElementById('modelSelect');
 
+  // NEW: send button reference
+  const sendBtn = document.getElementById("sendBtn");
+
   // Session control elements
   const sessionSelect = document.getElementById('sessionSelect');
   const newSessionBtn = document.getElementById('newSessionBtn');
@@ -25,6 +28,39 @@ document.addEventListener("DOMContentLoaded", () => {
   const modelInfoBtn = document.getElementById('modelInfoBtn');
   const modelInfoBox = document.getElementById('modelInfoBox');
   const modelInfoText = document.getElementById('modelInfoText');
+
+
+  // ===========================================================================
+  // ENABLE SPELLCHECK + SMART INPUT
+  // ===========================================================================
+  promptInput.setAttribute("spellcheck", "true");
+  promptInput.setAttribute("autocomplete", "on");
+  promptInput.setAttribute("autocorrect", "on");
+  promptInput.setAttribute("autocapitalize", "sentences");
+
+
+  // ===========================================================================
+  // AUTO-RESIZE INPUT
+  // ===========================================================================
+  function autoResize() {
+    promptInput.style.height = "auto";
+    promptInput.style.height = Math.min(promptInput.scrollHeight, 200) + "px";
+  }
+  promptInput.addEventListener("input", autoResize);
+
+
+  // ===========================================================================
+  // SEND BUTTON ACTIVE STATE
+  // ===========================================================================
+  function updateSendState() {
+    if (promptInput.value.trim().length > 0) {
+      sendBtn.classList.add("active");
+    } else {
+      sendBtn.classList.remove("active");
+    }
+  }
+  promptInput.addEventListener("input", updateSendState);
+  updateSendState();
 
 
   // ===========================================================================
@@ -114,8 +150,7 @@ document.addEventListener("DOMContentLoaded", () => {
     currentSession = data.session_id;
     sessionSelect.value = currentSession;
 
-    // 🔥 NEW CLIENT-SIDE FIX:
-    // Prevents carrying previous system prompt!
+    // Prevent previous system prompt from leaking
     localStorage.removeItem("systemPrompt");
     systemPromptInput.value = "";
 
@@ -292,6 +327,8 @@ document.addEventListener("DOMContentLoaded", () => {
     saveMessageToLog(currentSession, "user", userText);
     scrollBottom();
     promptInput.value = "";
+    autoResize();
+    updateSendState();
 
     const aiEl = document.createElement("div");
     aiEl.className = "message ai";
@@ -299,7 +336,10 @@ document.addEventListener("DOMContentLoaded", () => {
     messagesEl.appendChild(aiEl);
     scrollBottom();
 
-    // 🔥 SYSTEM PROMPT INCLUDED (fresh per-session)
+    // NEW: button -> loading state
+    sendBtn.classList.add("loading");
+    sendBtn.disabled = true;
+
     const systemPrompt = localStorage.getItem("systemPrompt") || "";
 
     const params = new URLSearchParams({
@@ -336,6 +376,11 @@ document.addEventListener("DOMContentLoaded", () => {
       aiEl.innerHTML = "[Error: Backend unreachable]";
     } finally {
       promptInput.disabled = false;
+
+      // restore button state
+      sendBtn.classList.remove("loading");
+      sendBtn.disabled = false;
+      updateSendState();
     }
   });
 
@@ -380,7 +425,6 @@ document.addEventListener("DOMContentLoaded", () => {
   saveSystemPromptBtn.addEventListener("click", () => {
     const sys = systemPromptInput.value.trim();
 
-    // Save or clear
     if (sys === "") {
       localStorage.removeItem("systemPrompt");
       toastMsg("System prompt cleared.");
