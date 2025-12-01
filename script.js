@@ -26,6 +26,27 @@ document.addEventListener("DOMContentLoaded", () => {
   const modelInfoBox = document.getElementById('modelInfoBox');
   const modelInfoText = document.getElementById('modelInfoText');
 
+
+  // ===========================================================================
+  // SLIDER: load and sync
+  // ===========================================================================
+  tempSlider.value = localStorage.getItem("temperature") || 1.0;
+  topPSlider.value = localStorage.getItem("top_p") || 1.0;
+
+  tempSlider.addEventListener("input", () => {
+    localStorage.setItem("temperature", tempSlider.value);
+  });
+  topPSlider.addEventListener("input", () => {
+    localStorage.setItem("top_p", topPSlider.value);
+  });
+
+
+  // ===========================================================================
+  // SYSTEM PROMPT LOAD
+  // ===========================================================================
+  systemPromptInput.value = localStorage.getItem("systemPrompt") || "";
+
+
   // ===========================================================================
   // CHAT LOG HELPERS
   // ===========================================================================
@@ -57,6 +78,7 @@ document.addEventListener("DOMContentLoaded", () => {
     logs[session_id] = [];
     localStorage.setItem("chatLogs", JSON.stringify(logs));
   }
+
 
   // ===========================================================================
   // SESSION MANAGEMENT
@@ -91,6 +113,11 @@ document.addEventListener("DOMContentLoaded", () => {
     await loadSessions();
     currentSession = data.session_id;
     sessionSelect.value = currentSession;
+
+    // 🔥 NEW CLIENT-SIDE FIX:
+    // Prevents carrying previous system prompt!
+    localStorage.removeItem("systemPrompt");
+    systemPromptInput.value = "";
 
     saveMessageToLog(currentSession, "ai", "New session created.");
     loadChatLog(currentSession);
@@ -142,7 +169,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   sessionSelect.addEventListener("change", async () => {
     currentSession = sessionSelect.value;
-    toastMsg(`Switched to session: ${currentSession}`);
+    toastMsg(`Switched to: ${currentSession}`);
     loadChatLog(currentSession);
   });
 
@@ -152,10 +179,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadSessions();
 
+
   // ===========================================================================
   // MARKDOWN
   // ===========================================================================
   marked.setOptions({ breaks: true });
+
 
   // ===========================================================================
   // THEME TOGGLE
@@ -173,6 +202,7 @@ document.addEventListener("DOMContentLoaded", () => {
     themeToggle.textContent = isLight ? '☀️' : '🌙';
   });
 
+
   // ===========================================================================
   // TOAST
   // ===========================================================================
@@ -181,6 +211,7 @@ document.addEventListener("DOMContentLoaded", () => {
     toast.style.display = 'block';
     setTimeout(() => { toast.style.display = 'none'; }, duration);
   }
+
 
   // ===========================================================================
   // MESSAGE HELPERS
@@ -196,6 +227,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function scrollBottom() {
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
+
 
   // ===========================================================================
   // LOAD MODELS
@@ -233,6 +265,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   loadModels();
 
+
   // ===========================================================================
   // MODEL INFO
   // ===========================================================================
@@ -242,6 +275,7 @@ document.addEventListener("DOMContentLoaded", () => {
     modelInfoText.textContent = `Model: ${name}\nNo extended info available.`;
     modelInfoBox.classList.toggle("hidden");
   });
+
 
   // ===========================================================================
   // SEND MESSAGE
@@ -265,14 +299,16 @@ document.addEventListener("DOMContentLoaded", () => {
     messagesEl.appendChild(aiEl);
     scrollBottom();
 
-    // 🔥 SYSTEM PROMPT INCLUDED HERE
+    // 🔥 SYSTEM PROMPT INCLUDED (fresh per-session)
     const systemPrompt = localStorage.getItem("systemPrompt") || "";
 
     const params = new URLSearchParams({
       model: modelSelect.value,
       prompt: userText,
       session_id: currentSession,
-      system_prompt: systemPrompt
+      system_prompt: systemPrompt,
+      temperature: localStorage.getItem("temperature") || "1",
+      top_p: localStorage.getItem("top_p") || "1"
     });
 
     const url = `http://localhost:8000/api/stream?${params.toString()}`;
@@ -303,8 +339,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+
   // ===========================================================================
-  // CLEAR CHAT (clears backend memory too)
+  // CLEAR CHAT + BACKEND MEMORY
   // ===========================================================================
   clearBtn.addEventListener("click", async () => {
     if (!currentSession) return toastMsg("No session selected.");
@@ -325,6 +362,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+
   // ===========================================================================
   // ENTER KEY SUBMIT
   // ===========================================================================
@@ -335,13 +373,21 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+
   // ===========================================================================
-  // SYSTEM PROMPT SAVE
+  // SAVE SYSTEM PROMPT
   // ===========================================================================
   saveSystemPromptBtn.addEventListener("click", () => {
     const sys = systemPromptInput.value.trim();
-    localStorage.setItem("systemPrompt", sys);
-    toastMsg("System prompt saved.");
+
+    // Save or clear
+    if (sys === "") {
+      localStorage.removeItem("systemPrompt");
+      toastMsg("System prompt cleared.");
+    } else {
+      localStorage.setItem("systemPrompt", sys);
+      toastMsg("System prompt saved.");
+    }
   });
 
 });

@@ -16,6 +16,13 @@ app.add_middleware(
 )
 
 # Sessions stored in memory
+# sessions = {
+#   session_id: {
+#       "name": "...",
+#       "messages": [ {role, content}, ... ],
+#       "system_prompt": "..."
+#   }
+# }
 sessions = {}
 
 # --------------------------
@@ -30,7 +37,7 @@ async def get_sessions():
 @app.post("/api/sessions/new")
 async def new_session():
     sid = str(uuid.uuid4())[:8]
-    sessions[sid] = {"name": f"Session {len(sessions) + 1}", "messages": []}
+    sessions[sid] = {"name": f"Session {len(sessions) + 1}", "messages": [], "system_prompt": ""}
     return {"session_id": sid, "name": sessions[sid]["name"]}
 
 
@@ -61,6 +68,9 @@ async def delete_session(request: Request):
 
 @app.post("/api/sessions/reset")
 async def reset_session(request: Request):
+    """
+    Clears conversation history AND stored system_prompt for the session.
+    """
     data = await request.json()
     sid = data.get("session_id")
 
@@ -68,6 +78,7 @@ async def reset_session(request: Request):
         return JSONResponse(content={"error": "Session not found"}, status_code=404)
 
     sessions[sid]["messages"] = []
+    sessions[sid]["system_prompt"] = ""
     return {"success": True}
 
 
@@ -85,54 +96,68 @@ async def get_models():
 
 
 # --------------------------
-#        STREAMING
+#        STREAMING HELPERS
 # --------------------------
+
+def remove_system_roles_from_history(history):
+    """Return a history list without any messages whose role is 'system'."""
+    return [m for m in history if m.get("role") != "system"]
+
 
 async def stream_ollama(model: str, session_id: str, user_prompt: str, system_prompt: str):
     """
     Streams response from Ollama with:
-      ✔ system prompt included
-      ✔ full conversation memory
-      ✔ correct formatting for models that ignore system messages
+      - session-level system_prompt (updated when provided)
+      - previous conversation memory (with any old system roles removed)
+      - user message appended
+      - assistant reply appended after streaming
     """
 
-    # Create session if missing
+    # Ensure session exists
     if session_id not in sessions:
-        sessions[session_id] = {"name": f"Session {len(sessions)+1}", "messages": []}
+        sessions[session_id] = {"name": f"Session {len(sessions)+1}", "messages": [], "system_prompt": ""}
 
-    memory = sessions[session_id]["messages"]
+    sess = sessions[session_id]
 
-    # Build messages list
+    # If a system_prompt param was provided (even empty), update stored system_prompt.
+    # The caller must pass system_prompt explicitly to change/clear it.
+    if system_prompt is not None:
+        # normalize to string
+        sess["system_prompt"] = system_prompt
+
+    # Remove any previous system role entries from memory to avoid persistence
+    sess["messages"] = remove_system_roles_from_history(sess.get("messages", []))
+
+    # Build messages list to send to model
     messages = []
 
-    # Add system prompt ONLY if provided
-    if system_prompt.strip():
-        messages.append({"role": "system", "content": system_prompt.strip()})
+    # Include system prompt only if non-empty
+    stored_sys = (sess.get("system_prompt") or "").strip()
+    if stored_sys:
+        messages.append({"role": "system", "content": stored_sys})
 
-    # Add memory from previous turns
-    messages.extend(memory)
+    # Add conversation memory (user/assistant pairs)
+    messages.extend(sess.get("messages", []))
 
-    # Add the new user message
+    # Append the new user message
     messages.append({"role": "user", "content": user_prompt})
 
-    # Save user message to session memory now
-    memory.append({"role": "user", "content": user_prompt})
+    # Save the new user message into session memory
+    sess["messages"].append({"role": "user", "content": user_prompt})
 
     try:
-        # Stream completion
+        # Stream from ollama (using their chat API)
         stream = ollama.chat(model=model, messages=messages, stream=True)
 
         collected = ""
-
         for chunk in stream:
             if "message" in chunk and "content" in chunk["message"]:
                 text = chunk["message"]["content"]
                 collected += text
                 yield text
                 await asyncio.sleep(0)
-
-        # Save assistant reply
-        memory.append({"role": "assistant", "content": collected})
+        # Save assistant reply to session memory
+        sess["messages"].append({"role": "assistant", "content": collected})
 
     except Exception as e:
         yield f"[Error: {e}]"
@@ -142,10 +167,12 @@ async def stream_ollama(model: str, session_id: str, user_prompt: str, system_pr
 async def stream_response(model: str = "",
                           prompt: str = "",
                           session_id: str = "default",
-                          system_prompt: str = ""):
+                          system_prompt: str = None):
     """
     Frontend calls:
       /api/stream?model=...&prompt=...&session_id=...&system_prompt=...
+    NOTE: If system_prompt parameter is provided (even empty string) it will
+    update the session's stored system prompt immediately.
     """
 
     if not model or not prompt:
