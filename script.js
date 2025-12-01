@@ -265,10 +265,14 @@ document.addEventListener("DOMContentLoaded", () => {
     messagesEl.appendChild(aiEl);
     scrollBottom();
 
+    // 🔥 SYSTEM PROMPT INCLUDED HERE
+    const systemPrompt = localStorage.getItem("systemPrompt") || "";
+
     const params = new URLSearchParams({
       model: modelSelect.value,
       prompt: userText,
-      session_id: currentSession
+      session_id: currentSession,
+      system_prompt: systemPrompt
     });
 
     const url = `http://localhost:8000/api/stream?${params.toString()}`;
