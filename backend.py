@@ -15,14 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Store conversation history per sessionId
-# Structure:
-# sessions = {
-#   "session_id": {
-#       "name": "My Chat",
-#       "messages": [ {role, content}, ... ]
-#   }
-# }
+# Sessions stored in memory
 sessions = {}
 
 # --------------------------
@@ -31,33 +24,18 @@ sessions = {}
 
 @app.get("/api/sessions")
 async def get_sessions():
-    """
-    Returns a list of all sessions.
-    """
-    return [
-        {"session_id": sid, "name": data["name"]}
-        for sid, data in sessions.items()
-    ]
+    return [{"session_id": sid, "name": data["name"]} for sid, data in sessions.items()]
 
 
 @app.post("/api/sessions/new")
 async def new_session():
-    """
-    Create a new session.
-    """
     sid = str(uuid.uuid4())[:8]
-    sessions[sid] = {
-        "name": f"Session {len(sessions) + 1}",
-        "messages": []
-    }
+    sessions[sid] = {"name": f"Session {len(sessions) + 1}", "messages": []}
     return {"session_id": sid, "name": sessions[sid]["name"]}
 
 
 @app.post("/api/sessions/rename")
 async def rename_session(request: Request):
-    """
-    Rename a session.
-    """
     data = await request.json()
     sid = data.get("session_id")
     new_name = data.get("new_name")
@@ -71,24 +49,18 @@ async def rename_session(request: Request):
 
 @app.post("/api/sessions/delete")
 async def delete_session(request: Request):
-    """
-    Delete a session and its history.
-    """
     data = await request.json()
     sid = data.get("session_id")
 
     if sid in sessions:
         del sessions[sid]
         return {"success": True}
-    else:
-        return JSONResponse(content={"error": "Session not found"}, status_code=404)
+
+    return JSONResponse(content={"error": "Session not found"}, status_code=404)
 
 
 @app.post("/api/sessions/reset")
 async def reset_session(request: Request):
-    """
-    Clears the conversation history but keeps the session.
-    """
     data = await request.json()
     sid = data.get("session_id")
 
@@ -100,47 +72,55 @@ async def reset_session(request: Request):
 
 
 # --------------------------
-#     MODEL LIST ROUTE
+#          MODELS
 # --------------------------
 
 @app.get("/api/models")
 async def get_models():
     try:
         res = ollama.list()
-        models = [m["model"] for m in res["models"]]
-        return JSONResponse(content=models)
+        return [m["model"] for m in res["models"]]
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
 # --------------------------
-#      STREAMING LOGIC
+#        STREAMING
 # --------------------------
 
-async def stream_ollama(model: str, session_id: str, prompt: str):
+async def stream_ollama(model: str, session_id: str, user_prompt: str, system_prompt: str):
     """
-    Stream a response from Ollama WITH conversation memory.
+    Streams response from Ollama with:
+      ✔ system prompt included
+      ✔ full conversation memory
+      ✔ correct formatting for models that ignore system messages
     """
 
-    # Create session if it does not exist
+    # Create session if missing
     if session_id not in sessions:
-        sessions[session_id] = {
-            "name": f"Session {len(sessions)+1}",
-            "messages": []
-        }
+        sessions[session_id] = {"name": f"Session {len(sessions)+1}", "messages": []}
 
     memory = sessions[session_id]["messages"]
 
-    # Add user message
-    memory.append({"role": "user", "content": prompt})
+    # Build messages list
+    messages = []
+
+    # Add system prompt ONLY if provided
+    if system_prompt.strip():
+        messages.append({"role": "system", "content": system_prompt.strip()})
+
+    # Add memory from previous turns
+    messages.extend(memory)
+
+    # Add the new user message
+    messages.append({"role": "user", "content": user_prompt})
+
+    # Save user message to session memory now
+    memory.append({"role": "user", "content": user_prompt})
 
     try:
-        # Stream from ollama using entire history
-        stream = ollama.chat(
-            model=model,
-            messages=memory,
-            stream=True
-        )
+        # Stream completion
+        stream = ollama.chat(model=model, messages=messages, stream=True)
 
         collected = ""
 
@@ -151,7 +131,7 @@ async def stream_ollama(model: str, session_id: str, prompt: str):
                 yield text
                 await asyncio.sleep(0)
 
-        # Save assistant message
+        # Save assistant reply
         memory.append({"role": "assistant", "content": collected})
 
     except Exception as e:
@@ -159,24 +139,27 @@ async def stream_ollama(model: str, session_id: str, prompt: str):
 
 
 @app.get("/api/stream")
-async def stream_response(model: str = "", prompt: str = "", session_id: str = "default"):
+async def stream_response(model: str = "",
+                          prompt: str = "",
+                          session_id: str = "default",
+                          system_prompt: str = ""):
     """
-    Stream endpoint for frontend.
+    Frontend calls:
+      /api/stream?model=...&prompt=...&session_id=...&system_prompt=...
     """
 
     if not model or not prompt:
-        return JSONResponse(content={"error": "model and prompt required"}, status_code=400)
+        return JSONResponse({"error": "model and prompt required"}, status_code=400)
 
-    # Start generator
     async def gen():
-        async for part in stream_ollama(model, session_id, prompt):
+        async for part in stream_ollama(model, session_id, prompt, system_prompt):
             yield part
 
     return StreamingResponse(gen(), media_type="text/plain")
 
 
 # --------------------------
-#      DEVELOPMENT SERVER
+#        DEV SERVER
 # --------------------------
 
 if __name__ == "__main__":
