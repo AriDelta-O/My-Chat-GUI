@@ -22,11 +22,19 @@ document.addEventListener("DOMContentLoaded", () => {
   const memoryToggle = document.getElementById('memoryToggle');
   const tempSlider = document.getElementById('tempSlider');
   const topPSlider = document.getElementById('topPSlider');
+  const tempValue = document.getElementById('tempValue');
+  const topPValue = document.getElementById('topPValue');
   const systemPromptInput = document.getElementById('systemPromptInput');
   const saveSystemPromptBtn = document.getElementById('saveSystemPromptBtn');
   const modelInfoBtn = document.getElementById('modelInfoBtn');
   const modelInfoBox = document.getElementById('modelInfoBox');
   const modelInfoText = document.getElementById('modelInfoText');
+  const tokenCounter = document.getElementById('tokenCounter');
+
+  // Export/Import buttons
+  const exportBtn = document.getElementById('exportBtn');
+  const importBtn = document.getElementById('importBtn');
+  const importFile = document.getElementById('importFile');
 
   // ===========================================================================
   // ENABLE SPELLCHECK + SMART INPUT
@@ -62,21 +70,27 @@ document.addEventListener("DOMContentLoaded", () => {
   promptInput.addEventListener("input", () => {
     updateSendState();
     autoResize();
+    updateTokenCount();
   });
   updateSendState();
   autoResize();
 
   // ===========================================================================
-  // SLIDER: load and sync
+  // SLIDER: load and sync with VALUE DISPLAY (Feature #17)
   // ===========================================================================
   tempSlider.value = localStorage.getItem("temperature") || 1.0;
   topPSlider.value = localStorage.getItem("top_p") || 1.0;
+  
+  tempValue.textContent = parseFloat(tempSlider.value).toFixed(2);
+  topPValue.textContent = parseFloat(topPSlider.value).toFixed(2);
 
   tempSlider.addEventListener("input", () => {
     localStorage.setItem("temperature", tempSlider.value);
+    tempValue.textContent = parseFloat(tempSlider.value).toFixed(2);
   });
   topPSlider.addEventListener("input", () => {
     localStorage.setItem("top_p", topPSlider.value);
+    topPValue.textContent = parseFloat(topPSlider.value).toFixed(2);
   });
 
   // ===========================================================================
@@ -85,41 +99,59 @@ document.addEventListener("DOMContentLoaded", () => {
   systemPromptInput.value = localStorage.getItem("systemPrompt") || "";
 
   // ===========================================================================
-  // CHAT LOG HELPERS
+  // BACKEND AS SOURCE OF TRUTH (Feature #16 - Removed localStorage chat logs)
   // ===========================================================================
-  function saveMessageToLog(session_id, role, text) {
-    let logs = JSON.parse(localStorage.getItem("chatLogs") || "{}");
-    if (!logs[session_id]) logs[session_id] = [];
-    logs[session_id].push({ role, text });
-    localStorage.setItem("chatLogs", JSON.stringify(logs));
-  }
-
-  function loadChatLog(session_id) {
+  async function loadChatLog(session_id) {
     messagesEl.innerHTML = "";
-    const logs = JSON.parse(localStorage.getItem("chatLogs") || "{}");
+    
+    try {
+      const res = await fetch(`http://localhost:8000/api/sessions/${session_id}/messages`);
+      const messages = await res.json();
 
-    if (!logs[session_id] || logs[session_id].length === 0) {
-      messagesEl.appendChild(createMessage("New session. Say something!"));
-      return;
+      if (!messages || messages.length === 0) {
+        messagesEl.appendChild(createMessage("New session. Say something!"));
+        updateTokenCount();
+        return;
+      }
+
+      messages.forEach(msg => {
+        messagesEl.appendChild(createMessage(msg.content, msg.role === "user" ? "user" : "ai", msg.timestamp));
+      });
+
+      scrollBottom();
+      updateTokenCount();
+    } catch (err) {
+      messagesEl.appendChild(createMessage("Error loading messages."));
     }
-
-    logs[session_id].forEach(msg => {
-      messagesEl.appendChild(createMessage(msg.text, msg.role === "user" ? "user" : "ai"));
-    });
-
-    scrollBottom();
   }
 
-  function clearChatLog(session_id) {
-    let logs = JSON.parse(localStorage.getItem("chatLogs") || "{}");
-    logs[session_id] = [];
-    localStorage.setItem("chatLogs", JSON.stringify(logs));
+  // ===========================================================================
+  // TOKEN COUNTER (Feature #8)
+  // ===========================================================================
+  function estimateTokens(text) {
+    // Rough estimation: ~4 characters per token
+    return Math.ceil(text.length / 4);
+  }
+
+  function updateTokenCount() {
+    const messages = messagesEl.querySelectorAll('.message');
+    let totalChars = 0;
+    
+    messages.forEach(msg => {
+      totalChars += msg.textContent.length;
+    });
+    
+    totalChars += promptInput.value.length;
+    
+    const tokens = estimateTokens(totalChars);
+    tokenCounter.textContent = `~${tokens} tokens`;
   }
 
   // ===========================================================================
   // SESSION MANAGEMENT
   // ===========================================================================
   let currentSession = "";
+  let autoScrollEnabled = true;
 
   async function loadSessions() {
     const res = await fetch("http://localhost:8000/api/sessions");
@@ -136,7 +168,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!currentSession && list.length > 0) {
       currentSession = list[0].session_id;
       sessionSelect.value = currentSession;
-      loadChatLog(currentSession);
+      await loadChatLog(currentSession);
     }
 
     return list;
@@ -153,8 +185,7 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.removeItem("systemPrompt");
     systemPromptInput.value = "";
 
-    saveMessageToLog(currentSession, "ai", "New session created.");
-    loadChatLog(currentSession);
+    await loadChatLog(currentSession);
 
     toastMsg("New session created.");
   }
@@ -183,15 +214,11 @@ document.addEventListener("DOMContentLoaded", () => {
       body: JSON.stringify({ session_id: currentSession })
     });
 
-    let logs = JSON.parse(localStorage.getItem("chatLogs") || "{}");
-    delete logs[currentSession];
-    localStorage.setItem("chatLogs", JSON.stringify(logs));
-
     const sessions = await loadSessions();
     if (sessions.length > 0) {
       currentSession = sessions[0].session_id;
       sessionSelect.value = currentSession;
-      loadChatLog(currentSession);
+      await loadChatLog(currentSession);
     } else {
       currentSession = "";
       sessionSelect.innerHTML = "";
@@ -204,7 +231,7 @@ document.addEventListener("DOMContentLoaded", () => {
   sessionSelect.addEventListener("change", async () => {
     currentSession = sessionSelect.value;
     toastMsg(`Switched to: ${currentSession}`);
-    loadChatLog(currentSession);
+    await loadChatLog(currentSession);
   });
 
   newSessionBtn.addEventListener("click", createSession);
@@ -244,30 +271,137 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ===========================================================================
-  // MESSAGE HELPERS
+  // MESSAGE HELPERS WITH TIMESTAMPS (Feature #13)
   // ===========================================================================
-  function createMessage(text, cls = 'ai') {
+  function createMessage(text, cls = 'ai', timestamp = null) {
     const el = document.createElement('div');
     el.className = `message ${cls}`;
-    if (cls === 'ai') el.innerHTML = marked.parse(text);
-    else el.textContent = text;
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    
+    if (cls === 'ai') {
+      contentDiv.innerHTML = marked.parse(text);
+    } else {
+      contentDiv.textContent = text;
+    }
+    
+    el.appendChild(contentDiv);
+    
+    // Add timestamp (Feature #13)
+    if (timestamp || cls !== 'ai' || text !== "New session. Say something!") {
+      const timeEl = document.createElement('div');
+      timeEl.className = 'message-timestamp';
+      const time = timestamp ? new Date(timestamp) : new Date();
+      timeEl.textContent = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      el.appendChild(timeEl);
+    }
+    
+    // Add message actions (Feature #6)
+    if (cls === 'ai' && text !== "New session. Say something!" && !text.includes("...")) {
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'message-actions';
+      
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'action-btn';
+      copyBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+      `;
+      copyBtn.title = 'Copy';
+      copyBtn.onclick = () => copyToClipboard(text);
+      
+      const regenerateBtn = document.createElement('button');
+      regenerateBtn.className = 'action-btn';
+      regenerateBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+      `;
+      regenerateBtn.title = 'Regenerate';
+      regenerateBtn.onclick = () => regenerateResponse(el);
+      
+      actionsDiv.appendChild(copyBtn);
+      actionsDiv.appendChild(regenerateBtn);
+      el.appendChild(actionsDiv);
+    }
+    
     return el;
   }
 
+  // Copy to clipboard action (Feature #6)
+  function copyToClipboard(text) {
+    // Remove markdown rendering, get plain text
+    const temp = document.createElement('div');
+    temp.innerHTML = marked.parse(text);
+    const plainText = temp.textContent;
+    
+    navigator.clipboard.writeText(plainText).then(() => {
+      toastMsg('Copied to clipboard!');
+    }).catch(() => {
+      toastMsg('Failed to copy');
+    });
+  }
+
+  // Regenerate response (Feature #6)
+  async function regenerateResponse(messageEl) {
+    // Find the previous user message
+    let prevEl = messageEl.previousElementSibling;
+    while (prevEl && !prevEl.classList.contains('user')) {
+      prevEl = prevEl.previousElementSibling;
+    }
+    
+    if (!prevEl) {
+      toastMsg('Cannot find previous message');
+      return;
+    }
+    
+    const userText = prevEl.querySelector('.message-content').textContent;
+    
+    // Remove the AI message
+    messageEl.remove();
+    
+    // Resend the request
+    await sendMessage(userText, true);
+  }
+
+  // Auto-scroll control (Feature #10)
+  let isUserScrolling = false;
+  messagesEl.addEventListener('scroll', () => {
+    const { scrollTop, scrollHeight, clientHeight } = messagesEl;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+    
+    if (!isAtBottom && !isUserScrolling) {
+      isUserScrolling = true;
+      autoScrollEnabled = false;
+    } else if (isAtBottom) {
+      isUserScrolling = false;
+      autoScrollEnabled = true;
+    }
+  });
+
   function scrollBottom() {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (autoScrollEnabled) {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
   }
 
   // ===========================================================================
-  // LOAD MODELS
+  // LOAD MODELS WITH INFO (Feature #9)
   // ===========================================================================
+  let modelsList = [];
+
   async function loadModels() {
     try {
       const res = await fetch("http://localhost:8000/api/models");
-      const models = await res.json();
+      modelsList = await res.json();
 
       modelSelect.innerHTML = "";
-      if (!models || models.length === 0) {
+      if (!modelsList || modelsList.length === 0) {
         const opt = document.createElement("option");
         opt.value = "";
         opt.textContent = "No models available";
@@ -275,14 +409,14 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      models.forEach(m => {
+      modelsList.forEach(m => {
         const opt = document.createElement("option");
-        opt.value = m;
-        opt.textContent = m;
+        opt.value = m.name;
+        opt.textContent = m.name;
         modelSelect.appendChild(opt);
       });
 
-      modelSelect.value = models[0];
+      modelSelect.value = modelsList[0].name;
 
     } catch (err) {
       toastMsg("Could not load models.");
@@ -295,40 +429,158 @@ document.addEventListener("DOMContentLoaded", () => {
   loadModels();
 
   // ===========================================================================
-  // MODEL INFO
+  // MODEL INFO (Feature #9)
   // ===========================================================================
-  modelInfoBtn.addEventListener("click", () => {
+  modelInfoBtn.addEventListener("click", async () => {
     const name = modelSelect.value;
     if (!name) return;
-    modelInfoText.textContent = `Model: ${name}\nNo extended info available.`;
-    modelInfoBox.classList.toggle("hidden");
+    
+    try {
+      const res = await fetch(`http://localhost:8000/api/models/${encodeURIComponent(name)}`);
+      const info = await res.json();
+      
+      modelInfoText.innerHTML = `
+        <strong>Model:</strong> ${info.name}<br>
+        <strong>Size:</strong> ${(info.size / 1e9).toFixed(2)} GB<br>
+        <strong>Family:</strong> ${info.details?.family || 'N/A'}<br>
+        <strong>Parameters:</strong> ${info.details?.parameter_size || 'N/A'}<br>
+        <strong>Context:</strong> ${info.details?.context_length || 'N/A'} tokens<br>
+        <strong>Format:</strong> ${info.details?.format || 'N/A'}
+      `;
+      modelInfoBox.classList.toggle("hidden");
+    } catch (err) {
+      modelInfoText.textContent = `Error loading model info: ${err.message}`;
+      modelInfoBox.classList.remove("hidden");
+    }
   });
 
   // ===========================================================================
-  // SEND MESSAGE
+  // EXPORT CONVERSATION (Feature #7)
   // ===========================================================================
-  promptForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!currentSession) return toastMsg("Select or create a session first.");
-    if (!modelSelect.value) return toastMsg("Please select a model first.");
+  exportBtn.addEventListener('click', async () => {
+    if (!currentSession) {
+      toastMsg('No session to export');
+      return;
+    }
+    
+    try {
+      const res = await fetch(`http://localhost:8000/api/sessions/${currentSession}/messages`);
+      const messages = await res.json();
+      
+      const sessionName = sessionSelect.options[sessionSelect.selectedIndex].text;
+      
+      // Export as JSON
+      const exportData = {
+        session_name: sessionName,
+        session_id: currentSession,
+        exported_at: new Date().toISOString(),
+        messages: messages
+      };
+      
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${sessionName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      toastMsg('Conversation exported!');
+    } catch (err) {
+      toastMsg('Export failed');
+    }
+  });
 
-    const userText = promptInput.value.trim();
-    if (!userText) return;
+  // ===========================================================================
+  // IMPORT CONVERSATION (Feature #7)
+  // ===========================================================================
+  importBtn.addEventListener('click', () => {
+    importFile.click();
+  });
 
-    messagesEl.appendChild(createMessage(userText, "user"));
-    saveMessageToLog(currentSession, "user", userText);
-    scrollBottom();
-    promptInput.value = "";
-    autoResize();
-    updateSendState();
+  importFile.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      
+      if (!data.messages || !Array.isArray(data.messages)) {
+        toastMsg('Invalid conversation file');
+        return;
+      }
+      
+      // Create new session
+      const res = await fetch("http://localhost:8000/api/sessions/new", { method: "POST" });
+      const newSession = await res.json();
+      
+      // Import messages
+      await fetch(`http://localhost:8000/api/sessions/${newSession.session_id}/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: data.messages })
+      });
+      
+      // Rename session if name exists
+      if (data.session_name) {
+        await fetch("http://localhost:8000/api/sessions/rename", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            session_id: newSession.session_id, 
+            new_name: data.session_name 
+          })
+        });
+      }
+      
+      await loadSessions();
+      currentSession = newSession.session_id;
+      sessionSelect.value = currentSession;
+      await loadChatLog(currentSession);
+      
+      toastMsg('Conversation imported!');
+      e.target.value = '';
+    } catch (err) {
+      toastMsg('Import failed');
+      e.target.value = '';
+    }
+  });
 
+  // ===========================================================================
+  // SEND MESSAGE (with skeleton loader - Feature #11)
+  // ===========================================================================
+  async function sendMessage(userText, isRegenerate = false) {
+    if (!currentSession) {
+      toastMsg("Select or create a session first.");
+      return;
+    }
+    if (!modelSelect.value) {
+      toastMsg("Please select a model first.");
+      return;
+    }
+
+    if (!isRegenerate) {
+      messagesEl.appendChild(createMessage(userText, "user"));
+      scrollBottom();
+    }
+
+    // Skeleton loader (Feature #11)
     const aiEl = document.createElement("div");
-    aiEl.className = "message ai";
-    aiEl.innerHTML = "...";
+    aiEl.className = "message ai skeleton-loading";
+    aiEl.innerHTML = `
+      <div class="skeleton-line" style="width: 80%"></div>
+      <div class="skeleton-line" style="width: 95%"></div>
+      <div class="skeleton-line" style="width: 70%"></div>
+    `;
     messagesEl.appendChild(aiEl);
     scrollBottom();
 
     // Send button loading state
+    const iconSpan = sendBtn.querySelector('.icon');
+    const spinnerSpan = sendBtn.querySelector('.spinner');
+    iconSpan.style.display = 'none';
+    spinnerSpan.style.display = 'inline-flex';
     sendBtn.classList.add("loading");
     sendBtn.disabled = true;
 
@@ -353,25 +605,85 @@ document.addEventListener("DOMContentLoaded", () => {
       const decoder = new TextDecoder();
       let finalText = "";
 
+      // Remove skeleton, add real message
+      aiEl.remove();
+      const realAiEl = document.createElement("div");
+      realAiEl.className = "message ai";
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'message-content';
+      realAiEl.appendChild(contentDiv);
+      messagesEl.appendChild(realAiEl);
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
         finalText += chunk;
-        aiEl.innerHTML = marked.parse(finalText);
+        contentDiv.innerHTML = marked.parse(finalText);
         scrollBottom();
       }
 
-      saveMessageToLog(currentSession, "ai", finalText);
+      // Add timestamp and actions
+      const timeEl = document.createElement('div');
+      timeEl.className = 'message-timestamp';
+      timeEl.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      realAiEl.appendChild(timeEl);
+
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'message-actions';
+      
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'action-btn';
+      copyBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+      `;
+      copyBtn.title = 'Copy';
+      copyBtn.onclick = () => copyToClipboard(finalText);
+      
+      const regenerateBtn = document.createElement('button');
+      regenerateBtn.className = 'action-btn';
+      regenerateBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+      `;
+      regenerateBtn.title = 'Regenerate';
+      regenerateBtn.onclick = () => regenerateResponse(realAiEl);
+      
+      actionsDiv.appendChild(copyBtn);
+      actionsDiv.appendChild(regenerateBtn);
+      realAiEl.appendChild(actionsDiv);
+
+      updateTokenCount();
 
     } catch (err) {
+      aiEl.className = "message ai";
       aiEl.innerHTML = "[Error: Backend unreachable]";
     } finally {
       promptInput.disabled = false;
+      iconSpan.style.display = 'inline';
+      spinnerSpan.style.display = 'none';
       sendBtn.classList.remove("loading");
       sendBtn.disabled = false;
       updateSendState();
     }
+  }
+
+  promptForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const userText = promptInput.value.trim();
+    if (!userText) return;
+    
+    promptInput.value = "";
+    autoResize();
+    updateSendState();
+    
+    await sendMessage(userText);
   });
 
   // ===========================================================================
@@ -387,12 +699,33 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify({ session_id: currentSession })
       });
 
-      clearChatLog(currentSession);
-      loadChatLog(currentSession);
+      await loadChatLog(currentSession);
 
       toastMsg("Chat cleared and session memory reset.");
     } catch (err) {
       toastMsg("Error clearing session memory.");
+    }
+  });
+
+  // ===========================================================================
+  // KEYBOARD SHORTCUTS (Feature #12)
+  // ===========================================================================
+  document.addEventListener('keydown', (e) => {
+    // Cmd/Ctrl + K: New session
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      createSession();
+    }
+    
+    // Cmd/Ctrl + /: Focus input
+    if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+      e.preventDefault();
+      promptInput.focus();
+    }
+    
+    // ESC: Unfocus input (stop generation would require backend support)
+    if (e.key === 'Escape') {
+      promptInput.blur();
     }
   });
 

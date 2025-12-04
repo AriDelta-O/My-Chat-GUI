@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import uuid
 import ollama
+from datetime import datetime
 
 app = FastAPI(title="My-Chat-GUI Backend")
 
@@ -19,7 +20,7 @@ app.add_middleware(
 # sessions = {
 #   session_id: {
 #       "name": "...",
-#       "messages": [ {role, content}, ... ],
+#       "messages": [ {role, content, timestamp}, ... ],
 #       "system_prompt": "..."
 #   }
 # }
@@ -82,6 +83,33 @@ async def reset_session(request: Request):
     return {"success": True}
 
 
+# Feature #16: Get messages from backend (single source of truth)
+@app.get("/api/sessions/{session_id}/messages")
+async def get_messages(session_id: str):
+    if session_id not in sessions:
+        return JSONResponse(content={"error": "Session not found"}, status_code=404)
+    
+    return sessions[session_id]["messages"]
+
+
+# Feature #7: Import messages into a session
+@app.post("/api/sessions/{session_id}/import")
+async def import_messages(session_id: str, request: Request):
+    data = await request.json()
+    messages = data.get("messages", [])
+    
+    if session_id not in sessions:
+        return JSONResponse(content={"error": "Session not found"}, status_code=404)
+    
+    # Add timestamps if missing
+    for msg in messages:
+        if "timestamp" not in msg:
+            msg["timestamp"] = datetime.now().isoformat()
+    
+    sessions[session_id]["messages"] = messages
+    return {"success": True, "count": len(messages)}
+
+
 # --------------------------
 #          MODELS
 # --------------------------
@@ -90,7 +118,24 @@ async def reset_session(request: Request):
 async def get_models():
     try:
         res = ollama.list()
-        return [m["model"] for m in res["models"]]
+        return [{"name": m["model"], "size": m.get("size", 0)} for m in res["models"]]
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+# Feature #9: Get detailed model info
+@app.get("/api/models/{model_name}")
+async def get_model_info(model_name: str):
+    try:
+        res = ollama.show(model_name)
+        return {
+            "name": model_name,
+            "size": res.get("size", 0),
+            "details": res.get("details", {}),
+            "modelfile": res.get("modelfile", ""),
+            "parameters": res.get("parameters", ""),
+            "template": res.get("template", "")
+        }
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
@@ -109,8 +154,8 @@ async def stream_ollama(model: str, session_id: str, user_prompt: str, system_pr
     Streams response from Ollama with:
       - session-level system_prompt (updated when provided)
       - previous conversation memory (with any old system roles removed)
-      - user message appended
-      - assistant reply appended after streaming
+      - user message appended with timestamp
+      - assistant reply appended after streaming with timestamp
     """
 
     # Ensure session exists
@@ -120,9 +165,7 @@ async def stream_ollama(model: str, session_id: str, user_prompt: str, system_pr
     sess = sessions[session_id]
 
     # If a system_prompt param was provided (even empty), update stored system_prompt.
-    # The caller must pass system_prompt explicitly to change/clear it.
     if system_prompt is not None:
-        # normalize to string
         sess["system_prompt"] = system_prompt
 
     # Remove any previous system role entries from memory to avoid persistence
@@ -136,14 +179,19 @@ async def stream_ollama(model: str, session_id: str, user_prompt: str, system_pr
     if stored_sys:
         messages.append({"role": "system", "content": stored_sys})
 
-    # Add conversation memory (user/assistant pairs)
-    messages.extend(sess.get("messages", []))
+    # Add conversation memory (user/assistant pairs) - exclude timestamp for API
+    for msg in sess.get("messages", []):
+        messages.append({"role": msg["role"], "content": msg["content"]})
 
     # Append the new user message
     messages.append({"role": "user", "content": user_prompt})
 
-    # Save the new user message into session memory
-    sess["messages"].append({"role": "user", "content": user_prompt})
+    # Save the new user message into session memory with timestamp
+    sess["messages"].append({
+        "role": "user", 
+        "content": user_prompt,
+        "timestamp": datetime.now().isoformat()
+    })
 
     try:
         # Stream from ollama (using their chat API)
@@ -156,11 +204,22 @@ async def stream_ollama(model: str, session_id: str, user_prompt: str, system_pr
                 collected += text
                 yield text
                 await asyncio.sleep(0)
-        # Save assistant reply to session memory
-        sess["messages"].append({"role": "assistant", "content": collected})
+        
+        # Save assistant reply to session memory with timestamp
+        sess["messages"].append({
+            "role": "assistant", 
+            "content": collected,
+            "timestamp": datetime.now().isoformat()
+        })
 
     except Exception as e:
-        yield f"[Error: {e}]"
+        error_msg = f"[Error: {e}]"
+        yield error_msg
+        sess["messages"].append({
+            "role": "assistant", 
+            "content": error_msg,
+            "timestamp": datetime.now().isoformat()
+        })
 
 
 @app.get("/api/stream")
