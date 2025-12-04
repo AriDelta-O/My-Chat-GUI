@@ -267,7 +267,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function toastMsg(msg, duration = 2000) {
     toast.textContent = msg;
     toast.style.display = 'block';
-    setTimeout(() => { toast.style.display = 'none'; }, duration);
+    toast.setAttribute('aria-hidden', 'false');
+    setTimeout(() => { 
+      toast.style.display = 'none'; 
+      toast.setAttribute('aria-hidden', 'true');
+    }, duration);
   }
 
   // ===========================================================================
@@ -311,6 +315,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </svg>
       `;
       copyBtn.title = 'Copy';
+      copyBtn.setAttribute('aria-label', 'Copy message');
       copyBtn.onclick = () => copyToClipboard(text);
       
       const regenerateBtn = document.createElement('button');
@@ -323,6 +328,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </svg>
       `;
       regenerateBtn.title = 'Regenerate';
+      regenerateBtn.setAttribute('aria-label', 'Regenerate response');
       regenerateBtn.onclick = () => regenerateResponse(el);
       
       actionsDiv.appendChild(copyBtn);
@@ -641,6 +647,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </svg>
       `;
       copyBtn.title = 'Copy';
+      copyBtn.setAttribute('aria-label', 'Copy message');
       copyBtn.onclick = () => copyToClipboard(finalText);
       
       const regenerateBtn = document.createElement('button');
@@ -653,6 +660,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </svg>
       `;
       regenerateBtn.title = 'Regenerate';
+      regenerateBtn.setAttribute('aria-label', 'Regenerate response');
       regenerateBtn.onclick = () => regenerateResponse(realAiEl);
       
       actionsDiv.appendChild(copyBtn);

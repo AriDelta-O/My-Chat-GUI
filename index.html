@@ -52,8 +52,8 @@
         <div class="panel-section">
           <h4>Sessions</h4>
           <div class="session-controls">
-            <select id="sessionSelect"></select>
-            <button id="newSessionBtn" class="mini-btn icon-only" title="New session (Ctrl+K)">
+            <select id="sessionSelect" aria-label="Select session"></select>
+            <button id="newSessionBtn" class="mini-btn icon-only" title="New session (Ctrl+K)" aria-label="New session">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -82,7 +82,7 @@
               </svg>
               Import
             </button>
-            <input type="file" id="importFile" accept=".json" style="display:none;">
+            <input type="file" id="importFile" accept=".json" style="display:none;" aria-label="Import file">
           </div>
         </div>
         <!-- SETTINGS -->
@@ -90,34 +90,34 @@
           <h4>Settings</h4>
           <label class="toggle-row">
             <span>Memory</span>
-            <input type="checkbox" id="memoryToggle" checked>
+            <input type="checkbox" id="memoryToggle" checked aria-label="Toggle memory">
           </label>
           <!-- Feature #17: Slider with value display -->
           <label class="slider-row">
             <span>Temperature</span>
-            <input id="tempSlider" type="range" min="0" max="2" step="0.01" value="1">
-            <span class="slider-value" id="tempValue">1.00</span>
+            <input id="tempSlider" type="range" min="0" max="2" step="0.01" value="1" aria-label="Temperature">
+            <span class="slider-value" id="tempValue" aria-live="polite">1.00</span>
           </label>
           <label class="slider-row">
             <span>Top-P</span>
-            <input id="topPSlider" type="range" min="0" max="1" step="0.01" value="1">
-            <span class="slider-value" id="topPValue">1.00</span>
+            <input id="topPSlider" type="range" min="0" max="1" step="0.01" value="1" aria-label="Top-P">
+            <span class="slider-value" id="topPValue" aria-live="polite">1.00</span>
           </label>
           <!-- Feature #8: Token counter -->
           <div style="margin-top: 12px;">
-            <span class="token-counter" id="tokenCounter">~0 tokens</span>
+            <span class="token-counter" id="tokenCounter" aria-live="polite">~0 tokens</span>
           </div>
         </div>
         <!-- SYSTEM PROMPT -->
         <div class="panel-section">
           <h4>System Prompt</h4>
-          <textarea id="systemPromptInput" placeholder="Optional system instruction..." rows="4"></textarea>
+          <textarea id="systemPromptInput" placeholder="Optional system instruction..." rows="4" aria-label="System prompt"></textarea>
           <button id="saveSystemPromptBtn" class="mini-btn">Apply</button>
         </div>
         <!-- MODEL -->
         <div class="panel-section">
           <h4>Model</h4>
-          <select id="modelSelect"></select>
+          <select id="modelSelect" aria-label="Select model"></select>
           <button id="modelInfoBtn" class="mini-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle>
@@ -127,14 +127,14 @@
             Info
           </button>
           <!-- Feature #9: Enhanced model info -->
-          <div id="modelInfoBox" class="model-info hidden">
+          <div id="modelInfoBox" class="model-info hidden" role="region" aria-live="polite">
             <p id="modelInfoText">Select a model to view details.</p>
           </div>
         </div>
       </div>
     </aside>
   </main>
-  <div id="toast" class="toast" aria-hidden="true"></div>
+  <div id="toast" class="toast" role="alert" aria-live="assertive" aria-hidden="true"></div>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="script.js"></script>
 </body>
