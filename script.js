@@ -554,7 +554,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // ===========================================================================
-  // SEND MESSAGE (with skeleton loader - Feature #11)
+  // SEND MESSAGE (with typing indicator)
   // ===========================================================================
   async function sendMessage(userText, isRegenerate = false) {
     if (!currentSession) {
@@ -571,13 +571,13 @@ document.addEventListener("DOMContentLoaded", () => {
       scrollBottom();
     }
 
-    // Skeleton loader (Feature #11)
+    // Typing indicator
     const aiEl = document.createElement("div");
-    aiEl.className = "message ai skeleton-loading";
+    aiEl.className = "message ai typing-indicator";
     aiEl.innerHTML = `
-      <div class="skeleton-line" style="width: 80%"></div>
-      <div class="skeleton-line" style="width: 95%"></div>
-      <div class="skeleton-line" style="width: 70%"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
     `;
     messagesEl.appendChild(aiEl);
     scrollBottom();
@@ -611,7 +611,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const decoder = new TextDecoder();
       let finalText = "";
 
-      // Remove skeleton, add real message
+      // Remove typing indicator, add real message
       aiEl.remove();
       const realAiEl = document.createElement("div");
       realAiEl.className = "message ai";
