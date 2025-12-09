@@ -36,6 +36,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const importBtn = document.getElementById('importBtn');
   const importFile = document.getElementById('importFile');
 
+  // Search elements
+  const searchToggle = document.getElementById('searchToggle');
+  const manualSearchInput = document.getElementById('manualSearchInput');
+  const manualSearchBtn = document.getElementById('manualSearchBtn');
+
   // ===========================================================================
   // ENABLE SPELLCHECK + SMART INPUT
   // ===========================================================================
@@ -97,6 +102,80 @@ document.addEventListener("DOMContentLoaded", () => {
   // SYSTEM PROMPT LOAD
   // ===========================================================================
   systemPromptInput.value = localStorage.getItem("systemPrompt") || "";
+
+  // ===========================================================================
+  // SEARCH SETTINGS
+  // ===========================================================================
+  // Load search preference
+  searchToggle.checked = localStorage.getItem('enableSearch') !== 'false';
+
+  searchToggle.addEventListener('change', () => {
+    localStorage.setItem('enableSearch', searchToggle.checked);
+    toastMsg(searchToggle.checked ? 'Web search enabled' : 'Web search disabled');
+  });
+
+  // Manual search function
+  manualSearchBtn.addEventListener('click', async () => {
+    const query = manualSearchInput.value.trim();
+    if (!query) {
+      toastMsg('Enter a search query');
+      return;
+    }
+    
+    try {
+      manualSearchBtn.disabled = true;
+      manualSearchBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 6v6l4 2"></path>
+        </svg>
+        Searching...
+      `;
+      
+      const response = await fetch(`http://localhost:8000/api/search?q=${encodeURIComponent(query)}`);
+      const data = await response.json();
+      
+      if (data.results && data.results.length > 0) {
+        // Display results in chat
+        let resultsText = `Search results for "${query}":\n\n`;
+        data.results.forEach((result, i) => {
+          resultsText += `${i + 1}. **${result.title}**\n`;
+          resultsText += `   ${result.url}\n`;
+          resultsText += `   ${result.snippet.substring(0, 150)}...\n\n`;
+        });
+        
+        messagesEl.appendChild(createMessage(resultsText, "ai"));
+        scrollBottom();
+        updateTokenCount();
+        
+        toastMsg(`Found ${data.results.length} results`);
+      } else {
+        toastMsg('No results found');
+      }
+      
+      manualSearchInput.value = '';
+    } catch (err) {
+      toastMsg('Search failed');
+      console.error('Search error:', err);
+    } finally {
+      manualSearchBtn.disabled = false;
+      manualSearchBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.35-4.35"></path>
+        </svg>
+        Search Web
+      `;
+    }
+  });
+
+  // Enter key for manual search
+  manualSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      manualSearchBtn.click();
+    }
+  });
 
   // ===========================================================================
   // BACKEND AS SOURCE OF TRUTH (Feature #16 - Removed localStorage chat logs)
@@ -554,7 +633,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // ===========================================================================
-  // SEND MESSAGE (with typing indicator)
+  // SEND MESSAGE (with typing indicator and search)
   // ===========================================================================
   async function sendMessage(userText, isRegenerate = false) {
     if (!currentSession) {
@@ -598,7 +677,8 @@ document.addEventListener("DOMContentLoaded", () => {
       session_id: currentSession,
       system_prompt: systemPrompt,
       temperature: localStorage.getItem("temperature") || "1",
-      top_p: localStorage.getItem("top_p") || "1"
+      top_p: localStorage.getItem("top_p") || "1",
+      enable_search: searchToggle.checked
     });
 
     const url = `http://localhost:8000/api/stream?${params.toString()}`;
